@@ -1,5 +1,9 @@
 # Catalog Export Tool (Python)
 
+![Screenshot](docs/screenshot.png)
+
+_Screenshot (local test run, fictional demo data)._
+
 Reads a paginated product listing and writes a clean CSV and/or Excel file.
 Demo target: https://books.toscrape.com/ (a public practice site made for scraping tests).
 
