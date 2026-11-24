@@ -3,6 +3,10 @@
 Reads a paginated product listing and writes a clean CSV and/or Excel file.
 Demo target: https://books.toscrape.com/ (a public practice site made for scraping tests).
 
+![Real run output](docs/screenshot.png)
+
+_Captured output of a real run (3 pages of the practice site)._
+
     pip install -r requirements.txt
     python export_catalog.py --url https://books.toscrape.com/ --pages 3 --out books --format both
 
