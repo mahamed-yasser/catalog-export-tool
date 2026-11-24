@@ -44,4 +44,18 @@ t("non-http url rejected", lambda: exits(["--url", "file:///etc/passwd"], ""))
 t("page with no products exits with message", lambda: exits(["--url", B + "/robots.txt", "--delay", "0"], "No products"))
 PAGES["/robots.txt"] = "User-agent: *\nDisallow: /"
 t("robots.txt disallow respected", lambda: exits(["--url", B + "/p1.html"], "robots.txt"))
+# second site with different markup, driven by a config file
+import json
+PAGES["/s1.html"] = '<html><div class="product-card"><h2 class="name"><a href="/x/a.html">Lamp</a></h2><span class="price">$24.90</span><span class="rating">4.5</span><span class="stock">Available</span></div><div class="product-card"><h2 class="name"><a href="/x/b.html">Desk</a></h2><span class="price">$120.00</span><span class="rating">3</span><span class="stock">Sold out</span></div><a class="next-page" href="s2.html">more</a></html>'
+PAGES["/s2.html"] = '<html><div class="product-card"><h2 class="name"><a href="/x/c.html">Chair</a></h2><span class="price">$60.00</span><span class="stock">Available</span></div></html>'
+PAGES["/robots.txt"] = "User-agent: *\nDisallow: /private/"
+cfg = os.path.join(d, "sel.json"); json.dump({"item": "div.product-card", "title": "h2.name a", "link": "h2.name a", "price": "span.price", "rating": "span.rating", "stock": "span.stock", "next": "a.next-page", "in_stock_text": "available"}, open(cfg, "w"))
+o2 = os.path.join(d, "second"); ec.main(["--url", B + "/s1.html", "--config", cfg, "--out", o2, "--format", "csv", "--delay", "0"])
+r2 = list(csv.DictReader(open(o2 + ".csv", encoding="utf-8-sig")))
+t("config: second site parsed across 2 pages", lambda: [r["title"] for r in r2] == ["Lamp", "Desk", "Chair"] or (_ for _ in ()).throw(AssertionError(r2)))
+t("config: numeric rating, price, currency, stock", lambda: r2[0]["rating"] == "4.5" and r2[1]["rating"] == "3.0" and r2[0]["price"] == "24.9" and r2[0]["currency"] == "$" and r2[0]["in_stock"] == "True" and r2[1]["in_stock"] == "False" and r2[2]["rating"] == "")
+t("config: absolute url from root-relative link", lambda: r2[0]["url"] == B + "/x/a.html")
+bad = os.path.join(d, "bad.json"); json.dump({"itme": "x"}, open(bad, "w"))
+t("config: unknown key rejected", lambda: exits(["--url", B + "/s1.html", "--config", bad], "unknown config keys"))
+t("default selectors still work after change", lambda: len(rows) == 4)
 print({"passed": sum(ok), "total": len(ok)})

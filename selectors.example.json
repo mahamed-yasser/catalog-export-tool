@@ -1,0 +1,10 @@
+{
+  "item": "div.product-card",
+  "title": "h2.name a",
+  "link": "h2.name a",
+  "price": "span.price",
+  "rating": "span.rating",
+  "stock": "span.stock",
+  "next": "a.next-page",
+  "in_stock_text": "available"
+}

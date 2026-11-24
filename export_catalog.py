@@ -15,6 +15,27 @@ from bs4 import BeautifulSoup
 
 UA = "catalog-export-demo/1.0 (portfolio demo)"
 RATING = {"One": 1, "Two": 2, "Three": 3, "Four": 4, "Five": 5}
+DEFAULT_SEL = {"item": "article.product_pod", "title": "h3 a", "link": "h3 a", "price": ".price_color",
+               "rating": "p.star-rating", "stock": ".availability", "next": "li.next a", "in_stock_text": "in stock"}
+SEL_KEYS = set(DEFAULT_SEL)
+
+
+def load_selectors(path):
+    """Read an optional JSON file that overrides the default CSS selectors."""
+    import json
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise SystemExit("config must be a JSON object")
+    unknown = set(data) - SEL_KEYS
+    if unknown:
+        raise SystemExit("unknown config keys: " + ", ".join(sorted(unknown)))
+    if not all(isinstance(v, str) and v.strip() for v in data.values()):
+        raise SystemExit("config values must be non-empty strings")
+    sel = dict(DEFAULT_SEL); sel.update(data)
+    return sel
+
+
 FIELDS = ["title", "price", "currency", "rating", "in_stock", "url"]
 
 
@@ -52,12 +73,13 @@ def parse_price(text):
     return float(m.group(2).replace(",", ".")), m.group(1)
 
 
-def parse_page(html, base):
+def parse_page(html, base, sel=None):
+    sel = sel or DEFAULT_SEL
     soup = BeautifulSoup(html, "html.parser")
     rows, bad = [], 0
-    for card in soup.select("article.product_pod"):
-        a = card.select_one("h3 a")
-        price_el = card.select_one(".price_color")
+    for card in soup.select(sel["item"]):
+        a = card.select_one(sel["title"])
+        price_el = card.select_one(sel["price"])
         if not a or not price_el:
             bad += 1
             continue
@@ -65,16 +87,20 @@ def parse_page(html, base):
         if price is None:
             bad += 1
             continue
-        rating_el = card.select_one("p.star-rating")
+        rating_el = card.select_one(sel["rating"])
         rating = next((RATING[c] for c in (rating_el.get("class", []) if rating_el else []) if c in RATING), None)
-        stock = card.select_one(".availability")
+        if rating is None and rating_el is not None:  # second-site support: rating written as a number like "4.5"
+            m = re.search(r"\d+(?:\.\d+)?", rating_el.get_text())
+            rating = float(m.group(0)) if m else None
+        stock = card.select_one(sel["stock"])
+        link_el = card.select_one(sel["link"]) or a
         rows.append({
             "title": a.get("title") or a.get_text(strip=True),
             "price": price, "currency": cur, "rating": rating,
-            "in_stock": "in stock" in (stock.get_text(strip=True).lower() if stock else ""),
-            "url": urljoin(base, a.get("href", "")),
+            "in_stock": sel["in_stock_text"].lower() in (stock.get_text(strip=True).lower() if stock else ""),
+            "url": urljoin(base, link_el.get("href", "")),
         })
-    nxt = soup.select_one("li.next a")
+    nxt = soup.select_one(sel["next"])
     return rows, (urljoin(base, nxt["href"]) if nxt else None), bad
 
 
@@ -109,12 +135,14 @@ def main(argv=None):
     ap.add_argument("--out", default="catalog")
     ap.add_argument("--format", choices=["csv", "xlsx", "both"], default="both")
     ap.add_argument("--delay", type=float, default=1.0, help="seconds between requests")
+    ap.add_argument("--config", help="JSON file with CSS selectors for another site (see selectors.example.json)")
     ap.add_argument("--ignore-robots", action="store_true", help="not recommended")
     a = ap.parse_args(argv)
     if not (1 <= a.pages <= 50):
         ap.error("--pages must be between 1 and 50")
     if urlparse(a.url).scheme not in ("http", "https"):
         ap.error("--url must start with http:// or https://")
+    sel = load_selectors(a.config) if a.config else DEFAULT_SEL
     s = requests.Session(); s.headers["User-Agent"] = UA
     if not a.ignore_robots and not allowed(a.url, s):
         raise SystemExit("robots.txt does not allow this URL. Stopping.")
@@ -127,7 +155,7 @@ def main(argv=None):
         html = fetch(s, url, delay=a.delay)
         if html is None:
             break
-        page_rows, url, bad = parse_page(html, cur_url)
+        page_rows, url, bad = parse_page(html, cur_url, sel)
         rows += page_rows; skipped += bad
         print(f"page {n + 1}: {len(page_rows)} items" + (f", {bad} skipped" if bad else ""))
         if url:
